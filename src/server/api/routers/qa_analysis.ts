@@ -8,10 +8,10 @@ const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
 const SYSTEM_PROMPT = `
 You are a QA testing AI assistant. Given a website URL and a specific task, determine the steps for testing the functionality.
-Respond with a JSON object containing:
-1. A concise rationale for your decision.
-2. The action to take (NAVIGATE, CLICK, TYPE, WAIT, SCREENSHOT, EXTRACT_LINKS, SUMMARIZE, SCROLL, or HIGHLIGHT).
-3. Any necessary parameters for the action.
+Respond with a valid JSON object containing:
+1. A 'thought' field with a concise rationale for your decision.
+2. An 'action' field with the action to take (NAVIGATE, CLICK, TYPE, WAIT, SCREENSHOT, EXTRACT_LINKS, SUMMARIZE, SCROLL, or HIGHLIGHT).
+3. A 'params' field with any necessary parameters for the action.
 
 For TYPE and CLICK actions, use specific CSS selectors or XPath. Common selectors:
 - Search bar: input[name="search_query"], #search, [aria-label="Search"]
@@ -31,6 +31,8 @@ Remember to consider different scenarios:
 - Use SCROLL if content might be below the fold.
 - Use HIGHLIGHT to visually mark important elements for reporting.
 
+You will be provided with the current page content. Use this information to make informed decisions about what actions to take next. Look for relevant input fields, buttons, and links that match the current task.
+
 Avoid repeating actions. Progress through tasks logically. After completing all necessary steps, use the SUMMARIZE action to indicate task completion.
 
 Example response:
@@ -41,22 +43,59 @@ Example response:
 }
 `;
 
-async function generateNextStep(currentState: string, task: string, completedActions: string[]) {
-  const response = await openai.chat.completions.create({
-    model: 'gpt-3.5-turbo',
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: `Current state: ${currentState}\nTask: ${task}\nCompleted actions: ${completedActions.join(', ')}\nWhat's the next step? Avoid repeating actions and progress logically through the task.` }
-    ],
-    max_tokens: 150,
-    temperature: 0.7,
-  });
-
+async function generateNextStep(currentState: string, task: string, completedActions: string[], pageContent: string) {
   try {
-    return JSON.parse(response.choices[0].message.content);
+    const response = await openai.chat.completions.create({
+      model: 'gpt-3.5-turbo',
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: `
+Current state: ${currentState}
+Task: ${task}
+Completed actions: ${completedActions.join(', ')}
+Page content:
+${pageContent}
+
+Based on the current page content and the task at hand, what's the next step? Avoid repeating actions and progress logically through the task. Respond with a valid JSON object containing 'thought', 'action', and 'params' fields.
+        ` }
+      ],
+      max_tokens: 150,
+      temperature: 0.7,
+    });
+
+    if (!response.choices || response.choices.length === 0 || !response.choices[0].message) {
+      throw new Error("Unexpected response structure from OpenAI API");
+    }
+
+    const content = response.choices[0].message.content;
+    if (!content) {
+      throw new Error("Empty response from OpenAI API");
+    }
+
+    // Try to parse the content as JSON
+    try {
+      return JSON.parse(content);
+    } catch (parseError) {
+      console.error("Failed to parse AI response as JSON:", parseError);
+      // If parsing fails, try to extract JSON from the content
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          return JSON.parse(jsonMatch[0]);
+        } catch (innerError) {
+          console.error("Failed to parse extracted JSON:", innerError);
+        }
+      }
+      throw new Error("Unable to parse response as JSON");
+    }
   } catch (error) {
-    console.error("Failed to parse AI response:", error);
-    return null;
+    console.error("Error in generateNextStep:", error);
+    // If all else fails, return a default step
+    return {
+      thought: "Unable to determine next step due to an error",
+      action: "SUMMARIZE",
+      params: {}
+    };
   }
 }
 
@@ -111,7 +150,9 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
         return { result, screenshots, error: "Critical error" };
       }
 
-      const nextStep = await generateNextStep(currentState, task, completedActions);
+      const pageContent = await extractPageContent(page);
+      const nextStep = await generateNextStep(currentState, task, completedActions, pageContent);
+
       if (!nextStep) {
         result += `Step ${stepCount + 1}: Failed to generate next step\n`;
         break;
@@ -387,6 +428,15 @@ async function summarizeTest(task: string, testResult: string) {
     temperature: 0.7,
   });
   return summary.choices[0].message.content;
+}
+
+async function extractPageContent(page: puppeteer.Page): Promise<string> {
+  return await page.evaluate(() => {
+    return document.body.innerText + '\n' + 
+           Array.from(document.querySelectorAll('input, button, a')).map(el => {
+             return `${el.tagName} ${el.id ? `id="${el.id}"` : ''} ${el.className ? `class="${el.className}"` : ''} ${(el as HTMLElement).innerText || (el as HTMLInputElement).placeholder || ''}`;
+           }).join('\n');
+  });
 }
 
 export const qualityAnalysisRouter = createTRPCRouter({
