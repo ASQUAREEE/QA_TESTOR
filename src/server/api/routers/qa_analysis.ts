@@ -17,6 +17,21 @@ For TYPE and CLICK actions, use specific CSS selectors or XPath. Common selector
 - Search bar: input[name="search_query"], #search, [aria-label="Search"]
 - Search button: button[aria-label="Search"], #search-icon-legacy
 - Video: #video-title, .ytd-video-renderer
+- Email input: input[type="email"], input[name="email"], #email
+- Password input: input[type="password"], input[name="password"], #password
+- Submit button: button[type="submit"], input[type="submit"], #submit, .submit-button
+
+Remember to consider different scenarios:
+- If logging in, enter email, then password, then submit.
+- If searching, enter search term, then click search button or press enter.
+- If navigating, use CLICK for menu items or links.
+- Use WAIT after actions that might trigger page loads or animations.
+- Use SCREENSHOT to capture important states.
+- Use EXTRACT_LINKS to gather navigation options.
+- Use SCROLL if content might be below the fold.
+- Use HIGHLIGHT to visually mark important elements for reporting.
+
+Avoid repeating actions. Progress through tasks logically. After completing all necessary steps, use the SUMMARIZE action to indicate task completion.
 
 Example response:
 {
@@ -31,7 +46,7 @@ async function generateNextStep(currentState: string, task: string, completedAct
     model: 'gpt-3.5-turbo',
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: `Current state: ${currentState}\nTask: ${task}\nCompleted actions: ${completedActions.join(', ')}\nWhat's the next step? Avoid repeating actions, especially searches.` }
+      { role: "user", content: `Current state: ${currentState}\nTask: ${task}\nCompleted actions: ${completedActions.join(', ')}\nWhat's the next step? Avoid repeating actions and progress logically through the task.` }
     ],
     max_tokens: 150,
     temperature: 0.7,
@@ -51,10 +66,11 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
   let result = '';
   let currentState = `URL: ${url}`;
   let screenshots: string[] = [];
-  let completedActions = new Set();
+  let completedActions: string[] = [];
   let videoClicked = false;
   let criticalErrorOccurred = false;
   let errors: string[] = [];
+  let actionAttempts: { [key: string]: number } = {};
 
   // Capture console messages
   page.on('console', msg => {
@@ -75,7 +91,15 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
   });
 
   try {
-    await page.goto(url, { waitUntil: 'networkidle0', timeout: 60000 });
+    const response = await page.goto(url, { waitUntil: 'networkidle0', timeout: 60000 });
+    
+    if (!response.ok()) {
+      const statusCode = response.status();
+      result += `Critical error: HTTP status ${statusCode}\n`;
+      if (statusCode >= 400) {
+        return { result, screenshots, error: `HTTP status ${statusCode}` };
+      }
+    }
     
     let taskCompleted = false;
     let stepCount = 0;
@@ -84,82 +108,77 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
     while (!taskCompleted && stepCount < maxSteps) {
       if (criticalErrorOccurred) {
         result += "Critical error occurred. Stopping further actions.\n";
-        break;
+        return { result, screenshots, error: "Critical error" };
       }
 
-      const nextStep = await generateNextStep(currentState, task, Array.from(completedActions));
+      const nextStep = await generateNextStep(currentState, task, completedActions);
       if (!nextStep) {
         result += `Step ${stepCount + 1}: Failed to generate next step\n`;
         break;
       }
       result += `Step ${stepCount + 1}: ${JSON.stringify(nextStep)}\n`;
 
-      // Check if the action has already been performed
-      if (completedActions.has(nextStep.action)) {
-        if (nextStep.action === 'TYPE' && nextStep.params?.selector.includes('search')) {
-          result += `Step ${stepCount + 1}: Search already performed. Skipping.\n`;
-          stepCount++;
-          continue;
-        }
-        if (nextStep.action === 'CLICK' && videoClicked) {
-          result += `Step ${stepCount + 1}: Video already clicked. Skipping.\n`;
-          stepCount++;
-          continue;
-        }
+      const actionKey = `${nextStep.action}_${nextStep.params?.selector || ''}`;
+      if (actionAttempts[actionKey] && actionAttempts[actionKey] >= 3) {
+        result += `Skipping repeated action: ${actionKey}\n`;
+        stepCount++;
+        continue;
       }
+
+      actionAttempts[actionKey] = (actionAttempts[actionKey] || 0) + 1;
 
       try {
         switch (nextStep.action) {
           case 'NAVIGATE':
-            if (nextStep.params?.url && !completedActions.has('NAVIGATE')) {
+            if (nextStep.params?.url && !completedActions.includes('NAVIGATE')) {
               await page.goto(nextStep.params.url, { waitUntil: 'networkidle0', timeout: 60000 });
               currentState = `URL: ${await page.url()}`;
-              completedActions.add('NAVIGATE');
+              completedActions.push('NAVIGATE');
             }
             break;
           case 'CLICK':
             if (nextStep.params?.selector) {
               await clickElement(page, nextStep.params.selector);
-              completedActions.add('CLICK');
+              completedActions.push(`CLICK_${nextStep.params.selector}`);
               if (nextStep.params.selector === '#video-title' || nextStep.params.selector === 'a[title]') {
                 videoClicked = true;
               }
             }
             break;
           case 'TYPE':
-            if (nextStep.params?.selector && nextStep.params?.text && !completedActions.has('SEARCH')) {
+            if (nextStep.params?.selector && nextStep.params?.text) {
               await typeText(page, nextStep.params.selector, nextStep.params.text);
-              await page.keyboard.press('Enter'); // Ensure the search is executed
-              completedActions.add('TYPE');
-              completedActions.add('SEARCH');
+              completedActions.push(`TYPE_${nextStep.params.selector}`);
             }
             break;
           case 'WAIT':
             await new Promise(resolve => setTimeout(resolve, nextStep.params?.ms || 1000));
+            completedActions.push('WAIT');
             break;
           case 'SCREENSHOT':
             const screenshot = await takeScreenshot(page);
             screenshots.push(screenshot);
-            completedActions.add('SCREENSHOT');
+            completedActions.push('SCREENSHOT');
             break;
           case 'EXTRACT_LINKS':
             const links = await extractLinks(page);
             result += `Links: ${JSON.stringify(links)}\n`;
-            completedActions.add('EXTRACT_LINKS');
+            completedActions.push('EXTRACT_LINKS');
             break;
           case 'SUMMARIZE':
             const summary = await summarizePage(page);
             result += `Summary: ${summary}\n`;
-            completedActions.add('SUMMARIZE');
+            completedActions.push('SUMMARIZE');
+            taskCompleted = true;
             break;
           case 'SCROLL':
             await scroll(page, nextStep.params?.direction || 'down');
-            completedActions.add('SCROLL');
+            completedActions.push('SCROLL');
             break;
           case 'HIGHLIGHT':
             if (nextStep.params?.selector) {
               await highlightElements(page, nextStep.params.selector);
-              completedActions.add('HIGHLIGHT');
+              completedActions.push(`HIGHLIGHT_${nextStep.params.selector}`);
             }
             break;
           default:
@@ -181,7 +200,7 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
         }
       }
 
-      currentState = `URL: ${await page.url()}\nLast action: ${nextStep.action}`;
+      currentState = `URL: ${await page.url()}\nLast action: ${nextStep.action}\nCompleted actions: ${completedActions.join(', ')}`;
       stepCount++;
 
       // Check if the video is playing
@@ -204,10 +223,16 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
       result += "Maximum steps reached without completing the task.\n";
     }
 
-    // Analyze errors and add important ones to the result
-    if (errors.length > 0) {
-      const errorSummary = await summarizeErrors(errors);
+    // Filter out non-critical errors before summarizing
+    const criticalErrors = errors.filter(error => 
+      !error.includes("Permissions policy violation: unload is not allowed")
+    );
+
+    if (criticalErrors.length > 0) {
+      const errorSummary = await summarizeErrors(criticalErrors);
       result += `\nImportant Errors:\n${errorSummary}`;
+    } else {
+      result += "\nNo critical errors were detected during the test.";
     }
 
     const testSummary = await summarizeTest(task, result);
@@ -227,7 +252,7 @@ async function summarizeErrors(errors: string[]): Promise<string> {
   const summary = await openai.chat.completions.create({
     model: "gpt-3.5-turbo",
     messages: [
-      { role: "system", content: "You are an error analysis assistant. Summarize the following errors, focusing only on the most important ones that could affect the functionality of the website. Ignore minor issues or expected behaviors." },
+      { role: "system", content: "You are an error analysis assistant. Summarize the following errors, focusing only on the most important ones that could affect the functionality of the website. Ignore minor issues, expected behaviors, or permission policy errors related to 'unload' events. These are generally not critical for functionality." },
       { role: "user", content: errorText }
     ],
     max_tokens: 150,

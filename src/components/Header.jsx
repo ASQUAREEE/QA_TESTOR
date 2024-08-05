@@ -39,7 +39,7 @@ export default function Header() {
           {useHasMounted() && <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
             {theme === 'dark' ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
           </Button>}
-          <Button>Sign In</Button>
+          <Link href="/sign-in"><Button>Sign In</Button></Link>
         </div>
       </div>
     </header>
