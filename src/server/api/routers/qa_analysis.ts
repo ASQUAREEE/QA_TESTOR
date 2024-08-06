@@ -97,8 +97,26 @@ Based on the current page content and the task at hand, what's the next step? Av
 }
 
 async function runQualityAnalysis(url: string, task: string): Promise<any> {
-  const browser = await puppeteer.launch({ headless: false });
+  const browser = await puppeteer.launch({
+    headless: false,
+    args: ['--start-maximized'], // This will start the browser maximized
+    defaultViewport: null // This disables the default viewport
+  });
   const page = await browser.newPage();
+
+  // Set the window size to a typical PC screen resolution (e.g., 1920x1080)
+  // await page.setViewport({
+  //   width: 1920,
+  //   height: 1080
+  // });
+
+  // Attempt to enter full screen mode
+  await page.evaluate(() => {
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen();
+    }
+  });
+
   let result = '';
   let currentState = `URL: ${url}`;
   let screenshots: string[] = [];
@@ -176,7 +194,7 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
             break;
           case 'CLICK':
             if (nextStep.params?.selector) {
-              await clickElement(page, nextStep.params.selector);
+              await clickWithRetry(page, nextStep.params.selector);
               completedActions.push(`CLICK_${nextStep.params.selector}`);
               if (nextStep.params.selector === '#video-title' || nextStep.params.selector === 'a[title]') {
                 videoClicked = true;
@@ -229,7 +247,7 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
           const alternativeSelector = await findAlternativeSelector(page, nextStep.params?.selector);
           if (alternativeSelector) {
             result += `Trying alternative selector: ${alternativeSelector}\n`;
-            await (nextStep.action === 'CLICK' ? clickElement(page, alternativeSelector) : typeText(page, alternativeSelector, nextStep.params?.text));
+            await (nextStep.action === 'CLICK' ? clickWithRetry(page, alternativeSelector) : typeText(page, alternativeSelector, nextStep.params?.text));
             result += `Step completed successfully with alternative selector\n`;
             if (nextStep.action === 'CLICK' && (alternativeSelector === '#video-title' || alternativeSelector === 'a[title]')) {
               videoClicked = true;
@@ -330,9 +348,38 @@ async function findAlternativeSelector(page: puppeteer.Page, originalSelector: s
   return null;
 }
 
-async function clickElement(page: puppeteer.Page, selector: string) {
-  await page.waitForSelector(selector, { timeout: 5000 });
-  await page.click(selector);
+async function clickWithRetry(page: puppeteer.Page, selector: string, maxAttempts = 3): Promise<boolean> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      await page.waitForSelector(selector, { timeout: 5000 });
+      await page.click(selector);
+      return true;
+    } catch (error) {
+      console.log(`Attempt ${attempt + 1} failed to click ${selector}: ${error.message}`);
+      if (attempt === maxAttempts - 1) {
+        console.log(`All ${maxAttempts} attempts to click ${selector} failed.`);
+        // If all attempts fail, try scrolling and clicking one last time
+        try {
+          await page.evaluate((sel) => {
+            const element = document.querySelector(sel);
+            if (element) {
+              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }, selector);
+          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for scroll to complete
+          await page.click(selector);
+          console.log(`Successfully clicked ${selector} after scrolling`);
+          return true;
+        } catch (scrollError) {
+          console.log(`Failed to click ${selector} even after scrolling: ${scrollError.message}`);
+          return false;
+        }
+      }
+      // Use a Promise-based timeout instead of page.waitForTimeout
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+  return false;
 }
 
 async function typeText(page: puppeteer.Page, selector: string, text: string) {
