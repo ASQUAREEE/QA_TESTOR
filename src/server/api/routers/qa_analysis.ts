@@ -11,7 +11,7 @@ const SYSTEM_PROMPT = `
 You are a QA testing AI assistant. Given a website URL and a specific task, determine the steps for testing the functionality.
 Respond with a valid JSON object containing:
 1. A 'thought' field with a concise rationale for your decision.
-2. An 'action' field with the action to take (NAVIGATE, CLICK, TYPE, WAIT, SCREENSHOT, EXTRACT_LINKS, SUMMARIZE, SCROLL, or HIGHLIGHT).
+2. An 'action' field with the action to take (NAVIGATE, CLICK, TYPE, WAIT, SCREENSHOT, EXTRACT_LINKS, SUMMARIZE, SCROLL, HIGHLIGHT, or SELECT).
 3. A 'params' field with any necessary parameters for the action.
 
 For TYPE and CLICK actions, use specific CSS selectors or XPath. Common selectors:
@@ -31,6 +31,7 @@ Remember to consider different scenarios:
 - Use EXTRACT_LINKS to gather navigation options.
 - Use SCROLL if content might be below the fold.
 - Use HIGHLIGHT to visually mark important elements for reporting.
+- Use SELECT for dropdown menus.
 
 You will be provided with the current page content. Use this information to make informed decisions about what actions to take next. Look for relevant input fields, buttons, and links that match the current task.
 
@@ -44,10 +45,13 @@ Example response:
 }
 `;
 
-async function generateNextStep(currentState: string, task: string, completedActions: string[], pageContent: string) {
+async function generateNextStep(page: puppeteer.Page, currentState: string, task: string, completedActions: string[], pageContent: string) {
   try {
-    // Truncate the pageContent to reduce token count
-    const truncatedContent = pageContent.slice(0, 5000); // Adjust this value as needed
+    // Extract HTML content
+    const htmlContent = await page.evaluate(() => document.documentElement.outerHTML);
+    
+    // Truncate the htmlContent to reduce token count
+    const truncatedHtml = htmlContent.slice(0, 10000); // Adjust this value as needed
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
@@ -57,13 +61,13 @@ async function generateNextStep(currentState: string, task: string, completedAct
 Current state: ${currentState}
 Task: ${task}
 Completed actions: ${completedActions.join(', ')}
-Page content (truncated):
-${truncatedContent}
+HTML content (truncated):
+${truncatedHtml}
 
-Based on the current page content and the task at hand, what's the next step? Avoid repeating actions and progress logically through the task. Respond with a valid JSON object containing 'thought', 'action', and 'params' fields. Do not use any Markdown formatting in your response.
+Based on the current HTML content and the task at hand, what's the next step? Analyze the HTML structure to identify relevant elements and their attributes. Consider using specific selectors or XPath for actions. Avoid repeating actions and progress logically through the task. Respond with a valid JSON object containing 'thought', 'action', and 'params' fields. Do not use any Markdown formatting in your response.
         ` }
       ],
-      max_tokens: 150,
+      max_tokens: 250,
       temperature: 0.7,
     });
 
@@ -166,7 +170,7 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
       }
 
       const pageContent = await extractPageContent(page);
-      const nextStep = await generateNextStep(currentState, task, completedActions, pageContent);
+      const nextStep = await generateNextStep(page, currentState, task, completedActions, pageContent);
 
       if (!nextStep) {
         result += `Step ${stepCount + 1}: Failed to generate next step\n`;
@@ -237,6 +241,12 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
               completedActions.push(`HIGHLIGHT_${nextStep.params.selector}`);
             }
             break;
+          case 'SELECT':
+            if (nextStep.params?.selector && nextStep.params?.value) {
+              await selectOption(page, nextStep.params.selector, nextStep.params.value);
+              completedActions.push(`SELECT_${nextStep.params.selector}`);
+            }
+            break;
           default:
             result += `Unknown action: ${nextStep.action}\n`;
         }
@@ -253,6 +263,10 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
               videoClicked = true;
             }
           }
+        } else if (nextStep.action === 'SELECT') {
+          result += `Attempting to force select option...\n`;
+          await forceSelectOption(page, nextStep.params?.selector, nextStep.params?.value);
+          result += `Forced selection completed\n`;
         }
       }
 
@@ -488,6 +502,21 @@ async function extractPageContent(page: puppeteer.Page): Promise<string> {
              return `${el.tagName} ${el.id ? `id="${el.id}"` : ''} ${el.className ? `class="${el.className}"` : ''} ${(el as HTMLElement).innerText || (el as HTMLInputElement).placeholder || ''}`;
            }).join('\n');
   });
+}
+
+async function selectOption(page: puppeteer.Page, selector: string, value: string) {
+  await page.waitForSelector(selector, { timeout: 5000 });
+  await page.select(selector, value);
+}
+
+async function forceSelectOption(page: puppeteer.Page, selector: string, value: string) {
+  await page.evaluate((sel, val) => {
+    const select = document.querySelector(sel) as HTMLSelectElement;
+    if (select) {
+      select.value = val;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }, selector, value);
 }
 
 export const qualityAnalysisRouter = createTRPCRouter({
