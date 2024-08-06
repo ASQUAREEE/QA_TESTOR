@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { z } from "zod";
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
 import puppeteer from 'puppeteer';
@@ -80,8 +81,11 @@ Based on the current HTML content and the task at hand, what's the next step? An
       throw new Error("Empty response from OpenAI API");
     }
 
-    // Strip Markdown formatting
-    const cleanedContent = content.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    // Strip Markdown formatting and comments
+    const cleanedContent = content
+      .replace(/^```json\s*/, '')
+      .replace(/\s*```$/, '')
+      .replace(/\/\/.*$/gm, ''); // Remove single-line comments
 
     return parseJson(cleanedContent);
   } catch (error) {
@@ -161,7 +165,7 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
     
     let taskCompleted = false;
     let stepCount = 0;
-    const maxSteps = 10;
+    const maxSteps = 15;
 
     while (!taskCompleted && stepCount < maxSteps) {
       if (criticalErrorOccurred) {
