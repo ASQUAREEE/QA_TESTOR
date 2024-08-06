@@ -24,10 +24,12 @@ export default function AIAssistantPage() {
       return
     }
     try {
+      // @ts-ignore
       const response = await executeTask({ task, times })
       setResult(response.result)
       setLivePageUrl(response.livePageUrl)
     } catch (err) {
+      // @ts-ignore
       setError(err.message || 'An error occurred')
     }
   }
