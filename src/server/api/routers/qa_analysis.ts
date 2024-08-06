@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
 import puppeteer from 'puppeteer';
 import { OpenAI } from 'openai';
+import parseJson, { JSONError } from 'parse-json';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
@@ -45,18 +46,21 @@ Example response:
 
 async function generateNextStep(currentState: string, task: string, completedActions: string[], pageContent: string) {
   try {
+    // Truncate the pageContent to reduce token count
+    const truncatedContent = pageContent.slice(0, 5000); // Adjust this value as needed
+
     const response = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
+      model: 'gpt-4o',
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: `
 Current state: ${currentState}
 Task: ${task}
 Completed actions: ${completedActions.join(', ')}
-Page content:
-${pageContent}
+Page content (truncated):
+${truncatedContent}
 
-Based on the current page content and the task at hand, what's the next step? Avoid repeating actions and progress logically through the task. Respond with a valid JSON object containing 'thought', 'action', and 'params' fields.
+Based on the current page content and the task at hand, what's the next step? Avoid repeating actions and progress logically through the task. Respond with a valid JSON object containing 'thought', 'action', and 'params' fields. Do not use any Markdown formatting in your response.
         ` }
       ],
       max_tokens: 150,
@@ -72,24 +76,17 @@ Based on the current page content and the task at hand, what's the next step? Av
       throw new Error("Empty response from OpenAI API");
     }
 
-    // Try to parse the content as JSON
-    try {
-      return JSON.parse(content);
-    } catch (parseError) {
-      console.error("Failed to parse AI response as JSON:", parseError);
-      // If parsing fails, try to extract JSON from the content
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          return JSON.parse(jsonMatch[0]);
-        } catch (innerError) {
-          console.error("Failed to parse extracted JSON:", innerError);
-        }
-      }
-      throw new Error("Unable to parse response as JSON");
-    }
+    // Strip Markdown formatting
+    const cleanedContent = content.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+
+    return parseJson(cleanedContent);
   } catch (error) {
-    console.error("Error in generateNextStep:", error);
+    if (error instanceof JSONError) {
+      console.error("JSON parsing error:", error.message);
+      console.error("Code frame:", error.codeFrame);
+    } else {
+      console.error("Error in generateNextStep:", error);
+    }
     // If all else fails, return a default step
     return {
       thought: "Unable to determine next step due to an error",
@@ -291,7 +288,7 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
 async function summarizeErrors(errors: string[]): Promise<string> {
   const errorText = errors.join('\n');
   const summary = await openai.chat.completions.create({
-    model: "gpt-3.5-turbo",
+    model: "gpt-4o",
     messages: [
       { role: "system", content: "You are an error analysis assistant. Summarize the following errors, focusing only on the most important ones that could affect the functionality of the website. Ignore minor issues, expected behaviors, or permission policy errors related to 'unload' events. These are generally not critical for functionality." },
       { role: "user", content: errorText }
@@ -360,7 +357,7 @@ async function extractLinks(page: puppeteer.Page) {
 async function summarizePage(page: puppeteer.Page): Promise<string> {
   const content = await page.evaluate(() => document.body.innerText);
   const summary = await openai.chat.completions.create({
-    model: "gpt-3.5-turbo",
+    model: "gpt-4o",
     messages: [
       { role: "system", content: "Summarize the following webpage content concisely:" },
       { role: "user", content: content.slice(0, 10000) }
@@ -400,26 +397,33 @@ async function highlightElements(page: puppeteer.Page, selector: string) {
 
 async function checkTaskCompletion(task: string, currentState: string) {
   const response = await openai.chat.completions.create({
-    model: 'gpt-3.5-turbo',
+    model: 'gpt-4o',
     messages: [
       { role: "system", content: "You are a QA testing assistant. Determine if the given task has been completed based on the current state." },
-      { role: "user", content: `Task: ${task}\nCurrent state: ${currentState}\nHas the task been completed? Respond with a JSON object containing 'completed' (boolean) and 'reason' (string).` }
+      { role: "user", content: `Task: ${task}\nCurrent state: ${currentState}\nHas the task been completed? Respond with a JSON object containing 'completed' (boolean) and 'reason' (string). Do not use any Markdown formatting in your response.` }
     ],
     max_tokens: 100,
     temperature: 0.3,
   });
 
   try {
-    return JSON.parse(response.choices[0].message.content);
+    const content = response.choices[0].message.content;
+    const cleanedContent = content.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    return parseJson(cleanedContent);
   } catch (error) {
-    console.error("Failed to parse task completion check:", error);
+    if (error instanceof JSONError) {
+      console.error("JSON parsing error in checkTaskCompletion:", error.message);
+      console.error("Code frame:", error.codeFrame);
+    } else {
+      console.error("Error in checkTaskCompletion:", error);
+    }
     return { completed: false, reason: "Unable to determine task completion" };
   }
 }
 
 async function summarizeTest(task: string, testResult: string) {
   const summary = await openai.chat.completions.create({
-    model: "gpt-3.5-turbo",
+    model: "gpt-4o",
     messages: [
       { role: "system", content: "You are a QA testing summary assistant. Provide a concise summary of the test results." },
       { role: "user", content: `Task: ${task}\n\nTest Results:\n${testResult}\n\nPlease provide a brief summary of the test execution and results.` }
