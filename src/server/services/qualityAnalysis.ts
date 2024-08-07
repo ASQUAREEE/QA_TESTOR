@@ -291,11 +291,24 @@ export async function runQualityAnalysis(url: string, task: string): Promise<any
     let criticalErrorOccurred = false;
     let errors: string[] = [];
     let actionAttempts: { [key: string]: number } = {};
+    let pageErrorOccurred = false;
 
     page.on('console', msg => {
       if (msg.type() === 'error' || msg.type() === 'warn') {
         errors.push(`Console ${msg.type()}: ${msg.text()}`);
       }
+    });
+
+    page.on('pageerror', (error) => {
+      const errorMessage = error.message;
+      if (errorMessage.includes('React') || errorMessage.includes('must be used within')) {
+        result += `Critical React Error: ${errorMessage}\n`;
+        criticalErrorOccurred = true;
+      } else {
+        result += `Page Error: ${errorMessage}\n`;
+      }
+      errors.push(`Page error: ${errorMessage}`);
+      pageErrorOccurred = true;
     });
 
     page.on('requestfailed', request => {
@@ -308,14 +321,31 @@ export async function runQualityAnalysis(url: string, task: string): Promise<any
       }
     });
 
-    const response = await page.goto(url, { waitUntil: 'networkidle0', timeout: 60000 });
-    
-    if (!response?.ok()) {
-      const statusCode = response?.status();
-      result += `Critical error: HTTP status ${statusCode}\n`;
-      if (statusCode && statusCode >= 400) {
-        return { result, screenshots, error: `HTTP status ${statusCode}` };
+    try {
+      const response = await page.goto(url, { 
+        waitUntil: 'networkidle0', 
+        timeout: 60000 // Increase timeout to 60 seconds
+      });
+      
+      if (!response?.ok()) {
+        const statusCode = response?.status();
+        return { 
+          result: `Critical error: HTTP status ${statusCode}`, 
+          screenshots: [], 
+          error: `HTTP status ${statusCode}` 
+        };
       }
+    } catch (navigationError: any) {
+      console.error("Navigation error:", navigationError);
+      return { 
+        result: "Navigation failed", 
+        screenshots: [], 
+        error: navigationError.message 
+      };
+    }
+
+    if (pageErrorOccurred) {
+      return { result, screenshots, error: "Page error occurred" };
     }
     
     let taskCompleted = false;

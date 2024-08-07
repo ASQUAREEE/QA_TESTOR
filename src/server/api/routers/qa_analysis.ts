@@ -107,49 +107,24 @@ Based on the current HTML content and the task at hand, what's the next step? An
 async function runQualityAnalysis(url: string, task: string): Promise<any> {
   const browser = await puppeteer.launch({
     headless: false,
-    args: ['--start-maximized'], // This will start the browser maximized
-    defaultViewport: null // This disables the default viewport
+    args: ['--start-maximized'],
+    defaultViewport: null
   });
   const page = await browser.newPage();
 
-  // Set the window size to a typical PC screen resolution (e.g., 1920x1080)
-  // await page.setViewport({
-  //   width: 1920,
-  //   height: 1080
-  // });
-
-  // Attempt to enter full screen mode
-  await page.evaluate(() => {
-    if (document.documentElement.requestFullscreen) {
-      document.documentElement.requestFullscreen();
-    }
-  });
-
   let result = '';
-  let currentState = `URL: ${url}`;
   let screenshots: string[] = [];
-  let completedActions: string[] = [];
-  let videoClicked = false;
-  let criticalErrorOccurred = false;
-  let errors: string[] = [];
-  let actionAttempts: { [key: string]: number } = {};
+  let pageErrorOccurred = false;
 
-  // Capture console messages
-  page.on('console', msg => {
-    if (msg.type() === 'error' || msg.type() === 'warn') {
-      errors.push(`Console ${msg.type()}: ${msg.text()}`);
+  // Capture page errors
+  page.on('pageerror', (error) => {
+    const errorMessage = error.message;
+    if (errorMessage.includes('React') || errorMessage.includes('must be used within')) {
+      result += `Critical React Error: ${errorMessage}\n`;
+    } else {
+      result += `Page Error: ${errorMessage}\n`;
     }
-  });
-
-  // Capture network errors
-  page.on('requestfailed', request => {
-    const failure = request.failure();
-    if (failure && failure.errorText !== 'net::ERR_ABORTED') {
-      errors.push(`Network error: ${request.url()} ${failure.errorText}`);
-      if (failure.errorText.includes('ERR_CONNECTION_REFUSED') || failure.errorText.includes('ERR_NAME_NOT_RESOLVED')) {
-        criticalErrorOccurred = true;
-      }
-    }
+    pageErrorOccurred = true;
   });
 
   try {
@@ -158,14 +133,48 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
     if (!response?.ok()) {
       const statusCode = response?.status();
       result += `Critical error: HTTP status ${statusCode}\n`;
-      if (statusCode && statusCode >= 400) {
-        return { result, screenshots, error: `HTTP status ${statusCode}` };
-      }
+      return { result, screenshots, error: `HTTP status ${statusCode}` };
     }
-    
+
+    if (pageErrorOccurred) {
+      return { result, screenshots, error: "Page error occurred" };
+    }
+
     let taskCompleted = false;
     let stepCount = 0;
-    const maxSteps = 15;
+    const maxSteps = 10;
+    let currentState = `URL: ${url}`;
+    let completedActions: string[] = [];
+    let videoClicked = false;
+    let criticalErrorOccurred = false;
+    let errors: string[] = [];
+    let reactErrors: string[] = [];
+    let criticalErrors: string[] = [];
+    let actionAttempts: { [key: string]: number } = {};
+
+    // Capture console messages
+    page.on('console', msg => {
+      if (msg.type() === 'error' || msg.type() === 'warn') {
+        const text = msg.text();
+        if (text.includes('React') || text.includes('must be used within')) {
+          reactErrors.push(`React error: ${text}`);
+        } else {
+          errors.push(`Console ${msg.type()}: ${text}`);
+        }
+      }
+    });
+
+    // Capture network errors
+    page.on('requestfailed', request => {
+      const failure = request.failure();
+      if (failure && failure.errorText !== 'net::ERR_ABORTED') {
+        errors.push(`Network error: ${request.url()} ${failure.errorText}`);
+        if (failure.errorText.includes('ERR_CONNECTION_REFUSED') || failure.errorText.includes('ERR_NAME_NOT_RESOLVED')) {
+          criticalErrors.push(`Critical network error: ${failure.errorText}`);
+          criticalErrorOccurred = true;
+        }
+      }
+    });
 
     while (!taskCompleted && stepCount < maxSteps) {
       if (criticalErrorOccurred) {
@@ -319,16 +328,14 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
       result += "Maximum steps reached without completing the task.\n";
     }
 
-    // Filter out non-critical errors before summarizing
-    const criticalErrors = errors.filter(error => 
-      !error.includes("Permissions policy violation: unload is not allowed")
-    );
-
-    if (criticalErrors.length > 0) {
-      const errorSummary = await summarizeErrors(criticalErrors);
-      result += `\nImportant Errors:\n${errorSummary}`;
+    if (reactErrors.length > 0 || criticalErrors.length > 0) {
+      const errorSummary = await summarizeErrors([...reactErrors, ...criticalErrors]);
+      result += `\nCritical Errors:\n${errorSummary}`;
+    } else if (errors.length > 0) {
+      const errorSummary = await summarizeErrors(errors);
+      result += `\nNon-critical Errors:\n${errorSummary}`;
     } else {
-      result += "\nNo critical errors were detected during the test.";
+      result += "\nNo errors were detected during the test.";
     }
 
     const testSummary = await summarizeTest(task, result);
@@ -348,10 +355,10 @@ async function summarizeErrors(errors: string[]): Promise<string> {
   const summary = await openai.chat.completions.create({
     model: "gpt-4o",
     messages: [
-      { role: "system", content: "You are an error analysis assistant. Summarize the following errors, focusing only on the most important ones that could affect the functionality of the website. Ignore minor issues, expected behaviors, or permission policy errors related to 'unload' events. These are generally not critical for functionality." },
+      { role: "system", content: "You are an error analysis assistant. Summarize the following errors, focusing on React errors and other critical issues that could affect the functionality of the website. Provide a brief explanation of each error and its potential impact." },
       { role: "user", content: errorText }
     ],
-    max_tokens: 150,
+    max_tokens: 200,
     temperature: 0.3,
   });
   return summary.choices?.[0]?.message?.content || '';
