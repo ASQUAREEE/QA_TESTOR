@@ -183,7 +183,6 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
       result += `Step ${stepCount + 1}: ${JSON.stringify(nextStep)}\n`;
       // @ts-expect-error
       const actionKey = `${nextStep.action}_${nextStep.params?.selector || ''}`;
-      // @ts-expect-error
       if (actionAttempts[actionKey] && actionAttempts[actionKey] >= 3) {
         result += `Skipping repeated action: ${actionKey}\n`;
         stepCount++;
