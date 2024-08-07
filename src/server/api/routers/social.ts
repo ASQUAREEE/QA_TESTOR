@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { z } from "zod";
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
 import puppeteer from 'puppeteer';
@@ -236,9 +235,11 @@ async function generateNextStep(task: string, currentUrl: string, actionHistory:
   }
 }
 
+// @ts-expect-error
+
 async function clickElement(page: puppeteer.Page, ariaLabel: string) {
   await page.waitForSelector('a#video-title, button, [role="button"], a, input[type="submit"]', { timeout: 5000 });
-  await page.evaluate((label) => {
+  await page.evaluate((label:string) => {
     const elements = Array.from(document.querySelectorAll('a#video-title, button, [role="button"], a, input[type="submit"]'));
     const element = elements.find(el => 
       el.textContent?.trim().toLowerCase().includes(label.toLowerCase()) ||
@@ -255,6 +256,7 @@ async function clickElement(page: puppeteer.Page, ariaLabel: string) {
   }, ariaLabel);
 }
 
+// @ts-expect-error
 async function typeText(page: puppeteer.Page, text: string) {
   await page.waitForSelector('input[type="text"], input[type="search"]', { timeout: 5000 });
   await page.type('input[type="text"], input[type="search"]', text);
@@ -263,14 +265,16 @@ async function typeText(page: puppeteer.Page, text: string) {
   }
 }
 
+// @ts-expect-error
 async function scroll(page: puppeteer.Page, direction: string) {
-  await page.evaluate((dir) => {
+  await page.evaluate((dir:string) => {
     window.scrollBy(0, dir === 'down' ? window.innerHeight : -window.innerHeight);
   }, direction);
 }
 
+// @ts-expect-error
 async function highlightElements(page: puppeteer.Page, selector: string) {
-  await page.evaluate((sel) => {
+  await page.evaluate((sel:string) => {
     const elements = document.querySelectorAll(sel);
     elements.forEach((el, index) => {
       const element = el as HTMLElement;
@@ -290,11 +294,12 @@ async function highlightElements(page: puppeteer.Page, selector: string) {
     });
   }, selector);
 }
+// @ts-expect-error
 
 async function takeScreenshot(page: puppeteer.Page) {
   await page.screenshot({ path: 'screenshot.png', fullPage: true });
 }
-
+// @ts-expect-error
 async function extractLinks(page: puppeteer.Page) {
   return await page.evaluate(() => {
     const links = Array.from(document.querySelectorAll('a'));
@@ -304,6 +309,7 @@ async function extractLinks(page: puppeteer.Page) {
     })).slice(0, 5); // Return only the first 5 links
   });
 }
+// @ts-expect-error
 
 async function summarizePage(page: puppeteer.Page) {
   const content = await page.evaluate(() => document.body.innerText);
@@ -315,7 +321,7 @@ async function summarizePage(page: puppeteer.Page) {
     ],
     temperature: 0.3,
   });
-  return summary.choices[0].message.content;
+  return summary.choices?.[0]?.message?.content || '';
 }
 
 export const aiRouter = createTRPCRouter({
