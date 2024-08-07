@@ -18,6 +18,14 @@ const config = {
     defaultLocale: "en",
   },
   transpilePackages: ["geist"],
+
+  // Add webpack configuration for chrome-aws-lambda
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      config.externals.push('chrome-aws-lambda');
+    }
+    return config;
+  },
 };
 
 export default config;

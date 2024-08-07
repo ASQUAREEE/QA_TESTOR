@@ -1,5 +1,5 @@
+import chromium from 'chrome-aws-lambda';
 import puppeteer from 'puppeteer-core';
-import chrome from 'chrome-aws-lambda';
 import { OpenAI } from 'openai';
 import parseJson, { JSONError } from 'parse-json';
 
@@ -44,14 +44,13 @@ Example response:
 }
 `;
 
-//@ts-expect-error
 async function generateNextStep(page: puppeteer.Page, currentState: string, task: string, completedActions: string[], pageContent: string) {
   try {
     const htmlContent = await page.evaluate(() => document.documentElement.outerHTML);
     const truncatedHtml = htmlContent.slice(0, 10000);
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: 'gpt-4o',
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: `
@@ -68,7 +67,7 @@ Based on the current HTML content and the task at hand, what's the next step? An
       temperature: 0.7,
     });
 
-    if (!response.choices || response.choices.length === 0 || !response?.choices[0]?.message) {
+    if (!response.choices || response.choices.length === 0 || !response.choices[0]?.message) {
       throw new Error("Unexpected response structure from OpenAI API");
     }
 
@@ -98,7 +97,6 @@ Based on the current HTML content and the task at hand, what's the next step? An
   }
 }
 
-//@ts-expect-error
 async function clickWithRetry(page: puppeteer.Page, selector: string, maxAttempts = 3): Promise<boolean> {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
@@ -110,7 +108,7 @@ async function clickWithRetry(page: puppeteer.Page, selector: string, maxAttempt
       if (attempt === maxAttempts - 1) {
         console.log(`All ${maxAttempts} attempts to click ${selector} failed.`);
         try {
-          await page.evaluate((sel:any) => {
+          await page.evaluate((sel:string) => {
             const element = document.querySelector(sel);
             if (element) {
               element.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -121,7 +119,7 @@ async function clickWithRetry(page: puppeteer.Page, selector: string, maxAttempt
           console.log(`Successfully clicked ${selector} after scrolling`);
           return true;
         } catch (scrollError:any) {
-          console.log(`Failed to click ${selector} even after scrolling: ${scrollError?.message}`);
+          console.log(`Failed to click ${selector} even after scrolling: ${scrollError.message}`);
           return false;
         }
       }
@@ -130,16 +128,16 @@ async function clickWithRetry(page: puppeteer.Page, selector: string, maxAttempt
   }
   return false;
 }
-//@ts-expect-error
+
 async function typeText(page: puppeteer.Page, selector: string, text: string) {
   await page.waitForSelector(selector, { timeout: 5000 });
   await page.type(selector, text);
 }
-//@ts-expect-error
+
 async function takeScreenshot(page: puppeteer.Page): Promise<string> {
   return await page.screenshot({ encoding: 'base64' }) as string;
 }
-//@ts-expect-error
+
 async function extractLinks(page: puppeteer.Page) {
   return await page.evaluate(() => {
     const links = Array.from(document.querySelectorAll('a'));
@@ -149,29 +147,28 @@ async function extractLinks(page: puppeteer.Page) {
     })).slice(0, 5);
   });
 }
-//@ts-expect-error
+
 async function summarizePage(page: puppeteer.Page): Promise<string> {
   const content = await page.evaluate(() => document.body.innerText);
   const summary = await openai.chat.completions.create({
-    model: "gpt-3.5-turbo",
+    model: "gpt-4o",
     messages: [
       { role: "system", content: "Summarize the following webpage content concisely:" },
       { role: "user", content: content.slice(0, 10000) }
     ],
     temperature: 0.3,
   });
-  return summary.choices[0]?.message?.content || '';
+  return summary.choices?.[0]?.message?.content || '';
 }
 
-//@ts-expect-error
 async function scroll(page: puppeteer.Page, direction: string) {
-  await page.evaluate((dir:any) => {
+  await page.evaluate((dir:string) => {
     window.scrollBy(0, dir === 'down' ? window.innerHeight : -window.innerHeight);
   }, direction);
 }
-//@ts-expect-error
+
 async function highlightElements(page: puppeteer.Page, selector: string) {
-  await page.evaluate((sel:any) => {
+  await page.evaluate((sel:string) => {
     const elements = document.querySelectorAll(sel);
     elements.forEach((el, index) => {
       const element = el as HTMLElement;
@@ -192,35 +189,59 @@ async function highlightElements(page: puppeteer.Page, selector: string) {
   }, selector);
 }
 
-async function checkTaskCompletion(task: string, currentState: string) {
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4',
+async function selectOption(page: puppeteer.Page, selector: string, value: string) {
+  await page.waitForSelector(selector, { timeout: 5000 });
+  await page.select(selector, value);
+}
+
+async function checkIfVideoPlaying(page: puppeteer.Page): Promise<boolean> {
+  return await page.evaluate(() => {
+    const video = document.querySelector('video');
+    return video && !video.paused;
+  });
+}
+
+async function findAlternativeSelector(page: puppeteer.Page, originalSelector: string): Promise<string | null> {
+  const alternatives = [
+    '#video-title',
+    '.ytd-video-renderer',
+    'a.ytd-video-renderer',
+    '#contents ytd-video-renderer',
+    'ytd-video-renderer #video-title',
+    'ytd-video-renderer .ytd-video-renderer',
+    'a.ytd-video-renderer h3',
+    '#contents .ytd-video-renderer h3',
+    'a[href^="/watch"]',
+    'a[title]'
+  ];
+
+  for (const selector of alternatives) {
+    const element = await page.$(selector);
+    if (element) {
+      return selector;
+    }
+  }
+
+  return null;
+}
+
+async function summarizeErrors(errors: string[]): Promise<string> {
+  const errorText = errors.join('\n');
+  const summary = await openai.chat.completions.create({
+    model: "gpt-4o",
     messages: [
-      { role: "system", content: "You are a QA testing assistant. Determine if the given task has been completed based on the current state." },
-      { role: "user", content: `Task: ${task}\nCurrent state: ${currentState}\nHas the task been completed? Respond with a JSON object containing 'completed' (boolean) and 'reason' (string). Do not use any Markdown formatting in your response.` }
+      { role: "system", content: "You are an error analysis assistant. Summarize the following errors, focusing only on the most important ones that could affect the functionality of the website. Ignore minor issues, expected behaviors, or permission policy errors related to 'unload' events. These are generally not critical for functionality." },
+      { role: "user", content: errorText }
     ],
-    max_tokens: 100,
+    max_tokens: 150,
     temperature: 0.3,
   });
-
-  try {
-    const content = response.choices[0]?.message?.content || '';
-    const cleanedContent = content.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-    return parseJson(cleanedContent);
-  } catch (error) {
-    if (error instanceof JSONError) {
-      console.error("JSON parsing error in checkTaskCompletion:", error.message);
-      console.error("Code frame:", error.codeFrame);
-    } else {
-      console.error("Error in checkTaskCompletion:", error);
-    }
-    return { completed: false, reason: "Unable to determine task completion" };
-  }
+  return summary.choices?.[0]?.message?.content || '';
 }
 
 async function summarizeTest(task: string, testResult: string) {
   const summary = await openai.chat.completions.create({
-    model: "gpt-4",
+    model: "gpt-4o",
     messages: [
       { role: "system", content: "You are a QA testing summary assistant. Provide a concise summary of the test results." },
       { role: "user", content: `Task: ${task}\n\nTest Results:\n${testResult}\n\nPlease provide a brief summary of the test execution and results.` }
@@ -228,20 +249,29 @@ async function summarizeTest(task: string, testResult: string) {
     max_tokens: 150,
     temperature: 0.7,
   });
-  return summary.choices[0]?.message?.content || '';
+  return summary.choices?.[0]?.message?.content || '';
+}
+
+async function extractPageContent(page: puppeteer.Page): Promise<string> {
+  return await page.evaluate(() => {
+    return document.body.innerText + '\n' + 
+           Array.from(document.querySelectorAll('input, button, a')).map(el => {
+             return `${el.tagName} ${el.id ? `id="${el.id}"` : ''} ${el.className ? `class="${el.className}"` : ''} ${(el as HTMLElement).innerText || (el as HTMLInputElement).placeholder || ''}`;
+           }).join('\n');
+  });
 }
 
 export async function runQualityAnalysis(url: string, task: string): Promise<any> {
   let browser;
   try {
     const executablePath = process.env.NODE_ENV === 'production'
-      ? await chrome.executablePath
+      ? await chromium.executablePath
       : '/usr/bin/google-chrome-stable'; // Adjust this path for your local Chrome installation
 
     const options = {
-      args: chrome.args,
+      args: chromium.args,
       executablePath: executablePath,
-      headless: chrome.headless,
+      headless: chromium.headless,
     };
 
     if (process.env.NODE_ENV === 'development') {
@@ -257,93 +287,169 @@ export async function runQualityAnalysis(url: string, task: string): Promise<any
     let currentState = `URL: ${url}`;
     let screenshots: string[] = [];
     let completedActions: string[] = [];
+    let videoClicked = false;
+    let criticalErrorOccurred = false;
+    let errors: string[] = [];
+    let actionAttempts: { [key: string]: number } = {};
+
+    page.on('console', msg => {
+      if (msg.type() === 'error' || msg.type() === 'warn') {
+        errors.push(`Console ${msg.type()}: ${msg.text()}`);
+      }
+    });
+
+    page.on('requestfailed', request => {
+      const failure = request.failure();
+      if (failure && failure.errorText !== 'net::ERR_ABORTED') {
+        errors.push(`Network error: ${request.url()} ${failure.errorText}`);
+        if (failure.errorText.includes('ERR_CONNECTION_REFUSED') || failure.errorText.includes('ERR_NAME_NOT_RESOLVED')) {
+          criticalErrorOccurred = true;
+        }
+      }
+    });
+
+    const response = await page.goto(url, { waitUntil: 'networkidle0', timeout: 60000 });
+    
+    if (!response?.ok()) {
+      const statusCode = response?.status();
+      result += `Critical error: HTTP status ${statusCode}\n`;
+      if (statusCode && statusCode >= 400) {
+        return { result, screenshots, error: `HTTP status ${statusCode}` };
+      }
+    }
+    
     let taskCompleted = false;
     let stepCount = 0;
     const maxSteps = 15;
 
-    await page.goto(url, { waitUntil: 'networkidle0', timeout: 60000 });
-
     while (!taskCompleted && stepCount < maxSteps) {
-      const pageContent = await page.evaluate(() => document.body.innerText);
+      if (criticalErrorOccurred) {
+        result += "Critical error occurred. Stopping further actions.\n";
+        return { result, screenshots, error: "Critical error" };
+      }
+
+      const pageContent = await extractPageContent(page);
       const nextStep = await generateNextStep(page, currentState, task, completedActions, pageContent);
 
+      if (!nextStep) {
+        result += `Step ${stepCount + 1}: Failed to generate next step\n`;
+        break;
+      }
       result += `Step ${stepCount + 1}: ${JSON.stringify(nextStep)}\n`;
+
+      const actionKey = `${nextStep.action}_${nextStep.params?.selector || ''}`;
+      if (actionAttempts[actionKey] && actionAttempts[actionKey] >= 3) {
+        result += `Skipping repeated action: ${actionKey}\n`;
+        stepCount++;
+        continue;
+      }
+
+      actionAttempts[actionKey] = (actionAttempts[actionKey] || 0) + 1;
 
       try {
         switch (nextStep.action) {
           case 'NAVIGATE':
-            //@ts-expect-error
-            if (nextStep.params?.url) {
-              //@ts-expect-error
+            if (nextStep.params?.url && !completedActions.includes('NAVIGATE')) {
               await page.goto(nextStep.params.url, { waitUntil: 'networkidle0', timeout: 60000 });
               currentState = `URL: ${await page.url()}`;
+              completedActions.push('NAVIGATE');
             }
             break;
           case 'CLICK':
-            //@ts-expect-error
             if (nextStep.params?.selector) {
-              //@ts-expect-error
               await clickWithRetry(page, nextStep.params.selector);
+              completedActions.push(`CLICK_${nextStep.params.selector}`);
+              if (nextStep.params.selector === '#video-title' || nextStep.params.selector === 'a[title]') {
+                videoClicked = true;
+              }
             }
             break;
           case 'TYPE':
-            //@ts-expect-error
             if (nextStep.params?.selector && nextStep.params?.text) {
-              //@ts-expect-error
               await typeText(page, nextStep.params.selector, nextStep.params.text);
+              completedActions.push(`TYPE_${nextStep.params.selector}`);
             }
             break;
           case 'WAIT':
-            await new Promise(resolve => setTimeout(resolve, (nextStep.params as { ms?: number })?.ms || 1000));
+            await new Promise(resolve => setTimeout(resolve, nextStep.params?.ms || 1000));
+            completedActions.push('WAIT');
             break;
           case 'SCREENSHOT':
             const screenshot = await takeScreenshot(page);
             screenshots.push(screenshot);
+            completedActions.push('SCREENSHOT');
             break;
           case 'EXTRACT_LINKS':
             const links = await extractLinks(page);
             result += `Links: ${JSON.stringify(links)}\n`;
+            completedActions.push('EXTRACT_LINKS');
             break;
           case 'SUMMARIZE':
             const summary = await summarizePage(page);
             result += `Summary: ${summary}\n`;
+            completedActions.push('SUMMARIZE');
             taskCompleted = true;
             break;
           case 'SCROLL':
-            //@ts-expect-error
             await scroll(page, nextStep.params?.direction || 'down');
+            completedActions.push('SCROLL');
             break;
           case 'HIGHLIGHT':
-            //@ts-expect-error
             if (nextStep.params?.selector) {
-              //@ts-expect-error
               await highlightElements(page, nextStep.params.selector);
+              completedActions.push(`HIGHLIGHT_${nextStep.params.selector}`);
+            }
+            break;
+          case 'SELECT':
+            if (nextStep.params?.selector && nextStep.params?.value) {
+              await selectOption(page, nextStep.params.selector, nextStep.params.value);
+              completedActions.push(`SELECT_${nextStep.params.selector}`);
             }
             break;
           default:
             result += `Unknown action: ${nextStep.action}\n`;
         }
         result += `Step completed successfully\n`;
-        //@ts-expect-error
-        completedActions.push(nextStep.action);
       } catch (stepError: any) {
         result += `Error executing step: ${stepError.message}\n`;
+        if (nextStep.action === 'CLICK' || nextStep.action === 'TYPE') {
+          const alternativeSelector = await findAlternativeSelector(page, nextStep.params?.selector);
+          if (alternativeSelector) {
+            result += `Trying alternative selector: ${alternativeSelector}\n`;
+            await (nextStep.action === 'CLICK' ? clickWithRetry(page, alternativeSelector) : typeText(page, alternativeSelector, nextStep.params?.text));
+            result += `Step completed successfully with alternative selector\n`;
+            if (nextStep.action === 'CLICK' && (alternativeSelector === '#video-title' || alternativeSelector === 'a[title]')) {
+              videoClicked = true;
+            }
+          }
+        }
       }
 
-      currentState = `URL: ${await page.url()}\nLast action: ${nextStep.action}`;
+      currentState = `URL: ${await page.url()}\nLast action: ${nextStep.action}\nCompleted actions: ${completedActions.join(', ')}`;
       stepCount++;
 
-      if (!taskCompleted) {
-        const completionCheck = await checkTaskCompletion(task, currentState);
-        if (completionCheck.completed) {
+      if (videoClicked) {
+        const isPlaying = await checkIfVideoPlaying(page);
+        if (isPlaying) {
           taskCompleted = true;
-          result += `Task completed: ${completionCheck.reason}\n`;
+          result += `Task completed: Video is playing.\n`;
         }
       }
     }
 
     if (!taskCompleted) {
       result += "Maximum steps reached without completing the task.\n";
+    }
+
+    const criticalErrors = errors.filter(error => 
+      !error.includes("Permissions policy violation: unload is not allowed")
+    );
+
+    if (criticalErrors.length > 0) {
+      const errorSummary = await summarizeErrors(criticalErrors);
+      result += `\nImportant Errors:\n${errorSummary}`;
+    } else {
+      result += "\nNo critical errors were detected during the test.";
     }
 
     const testSummary = await summarizeTest(task, result);
