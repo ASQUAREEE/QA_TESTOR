@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { z } from "zod";
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
 import puppeteer from 'puppeteer';
@@ -46,6 +45,7 @@ Example response:
 }
 `;
 
+// @ts-expect-error
 async function generateNextStep(page: puppeteer.Page, currentState: string, task: string, completedActions: string[], pageContent: string) {
   try {
     // Extract HTML content
@@ -72,7 +72,7 @@ Based on the current HTML content and the task at hand, what's the next step? An
       temperature: 0.7,
     });
 
-    if (!response.choices || response.choices.length === 0 || !response.choices[0].message) {
+    if (!response.choices || response.choices.length === 0 || !response.choices[0]?.message) {
       throw new Error("Unexpected response structure from OpenAI API");
     }
 
@@ -136,7 +136,7 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
 
   // Capture console messages
   page.on('console', msg => {
-    if (msg.type() === 'error' || msg.type() === 'warning') {
+    if (msg.type() === 'error' || msg.type() === 'warn') {
       errors.push(`Console ${msg.type()}: ${msg.text()}`);
     }
   });
@@ -155,10 +155,10 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
   try {
     const response = await page.goto(url, { waitUntil: 'networkidle0', timeout: 60000 });
     
-    if (!response.ok()) {
-      const statusCode = response.status();
+    if (!response?.ok()) {
+      const statusCode = response?.status();
       result += `Critical error: HTTP status ${statusCode}\n`;
-      if (statusCode >= 400) {
+      if (statusCode && statusCode >= 400) {
         return { result, screenshots, error: `HTTP status ${statusCode}` };
       }
     }
@@ -181,8 +181,9 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
         break;
       }
       result += `Step ${stepCount + 1}: ${JSON.stringify(nextStep)}\n`;
-
+      // @ts-expect-error
       const actionKey = `${nextStep.action}_${nextStep.params?.selector || ''}`;
+      // @ts-expect-error
       if (actionAttempts[actionKey] && actionAttempts[actionKey] >= 3) {
         result += `Skipping repeated action: ${actionKey}\n`;
         stepCount++;
@@ -194,28 +195,40 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
       try {
         switch (nextStep.action) {
           case 'NAVIGATE':
+// @ts-expect-error
+
             if (nextStep.params?.url && !completedActions.includes('NAVIGATE')) {
+// @ts-expect-error
+
               await page.goto(nextStep.params.url, { waitUntil: 'networkidle0', timeout: 60000 });
               currentState = `URL: ${await page.url()}`;
               completedActions.push('NAVIGATE');
             }
             break;
           case 'CLICK':
+            // @ts-expect-error
             if (nextStep.params?.selector) {
+              // @ts-expect-error
               await clickWithRetry(page, nextStep.params.selector);
+              // @ts-expect-error
               completedActions.push(`CLICK_${nextStep.params.selector}`);
+              // @ts-expect-error
               if (nextStep.params.selector === '#video-title' || nextStep.params.selector === 'a[title]') {
                 videoClicked = true;
               }
             }
             break;
           case 'TYPE':
+            // @ts-expect-error
             if (nextStep.params?.selector && nextStep.params?.text) {
+              // @ts-expect-error
               await typeText(page, nextStep.params.selector, nextStep.params.text);
+              // @ts-expect-error
               completedActions.push(`TYPE_${nextStep.params.selector}`);
             }
             break;
           case 'WAIT':
+            // @ts-expect-error
             await new Promise(resolve => setTimeout(resolve, nextStep.params?.ms || 1000));
             completedActions.push('WAIT');
             break;
@@ -236,18 +249,25 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
             taskCompleted = true;
             break;
           case 'SCROLL':
+            // @ts-expect-error
             await scroll(page, nextStep.params?.direction || 'down');
             completedActions.push('SCROLL');
             break;
           case 'HIGHLIGHT':
+            // @ts-expect-error
             if (nextStep.params?.selector) {
+              // @ts-expect-error
               await highlightElements(page, nextStep.params.selector);
+              // @ts-expect-error
               completedActions.push(`HIGHLIGHT_${nextStep.params.selector}`);
             }
             break;
           case 'SELECT':
+            // @ts-expect-error
             if (nextStep.params?.selector && nextStep.params?.value) {
+              // @ts-expect-error
               await selectOption(page, nextStep.params.selector, nextStep.params.value);
+              // @ts-expect-error
               completedActions.push(`SELECT_${nextStep.params.selector}`);
             }
             break;
@@ -258,9 +278,11 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
       } catch (stepError: any) {
         result += `Error executing step: ${stepError.message}\n`;
         if (nextStep.action === 'CLICK' || nextStep.action === 'TYPE') {
+          // @ts-expect-error
           const alternativeSelector = await findAlternativeSelector(page, nextStep.params?.selector);
           if (alternativeSelector) {
             result += `Trying alternative selector: ${alternativeSelector}\n`;
+            // @ts-expect-error
             await (nextStep.action === 'CLICK' ? clickWithRetry(page, alternativeSelector) : typeText(page, alternativeSelector, nextStep.params?.text));
             result += `Step completed successfully with alternative selector\n`;
             if (nextStep.action === 'CLICK' && (alternativeSelector === '#video-title' || alternativeSelector === 'a[title]')) {
@@ -269,6 +291,7 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
           }
         } else if (nextStep.action === 'SELECT') {
           result += `Attempting to force select option...\n`;
+          // @ts-expect-error
           await forceSelectOption(page, nextStep.params?.selector, nextStep.params?.value);
           result += `Forced selection completed\n`;
         }
@@ -313,7 +336,7 @@ async function runQualityAnalysis(url: string, task: string): Promise<any> {
     result += `\nTest Summary:\n${testSummary}`;
 
     return { result, screenshots };
-  } catch (error) {
+  } catch (error:any) {
     console.error("Error in runQualityAnalysis:", error);
     return { result: "An error occurred during the analysis", error: error.message };
   } finally {
@@ -332,15 +355,16 @@ async function summarizeErrors(errors: string[]): Promise<string> {
     max_tokens: 150,
     temperature: 0.3,
   });
-  return summary.choices[0].message.content;
+  return summary.choices?.[0]?.message?.content || '';
 }
-
+// @ts-expect-error
 async function checkIfVideoPlaying(page: puppeteer.Page): Promise<boolean> {
   return await page.evaluate(() => {
     const video = document.querySelector('video');
     return video && !video.paused;
   });
 }
+// @ts-expect-error
 
 async function findAlternativeSelector(page: puppeteer.Page, originalSelector: string): Promise<string | null> {
   const alternatives = [
@@ -365,20 +389,20 @@ async function findAlternativeSelector(page: puppeteer.Page, originalSelector: s
 
   return null;
 }
-
+// @ts-expect-error
 async function clickWithRetry(page: puppeteer.Page, selector: string, maxAttempts = 3): Promise<boolean> {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       await page.waitForSelector(selector, { timeout: 5000 });
       await page.click(selector);
       return true;
-    } catch (error) {
+    } catch (error:any) {
       console.log(`Attempt ${attempt + 1} failed to click ${selector}: ${error.message}`);
       if (attempt === maxAttempts - 1) {
         console.log(`All ${maxAttempts} attempts to click ${selector} failed.`);
         // If all attempts fail, try scrolling and clicking one last time
         try {
-          await page.evaluate((sel) => {
+          await page.evaluate((sel:string) => {
             const element = document.querySelector(sel);
             if (element) {
               element.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -388,7 +412,7 @@ async function clickWithRetry(page: puppeteer.Page, selector: string, maxAttempt
           await page.click(selector);
           console.log(`Successfully clicked ${selector} after scrolling`);
           return true;
-        } catch (scrollError) {
+        } catch (scrollError:any) {
           console.log(`Failed to click ${selector} even after scrolling: ${scrollError.message}`);
           return false;
         }
@@ -399,15 +423,17 @@ async function clickWithRetry(page: puppeteer.Page, selector: string, maxAttempt
   }
   return false;
 }
+// @ts-expect-error
 
 async function typeText(page: puppeteer.Page, selector: string, text: string) {
   await page.waitForSelector(selector, { timeout: 5000 });
   await page.type(selector, text);
 }
-
+// @ts-expect-error
 async function takeScreenshot(page: puppeteer.Page): Promise<string> {
   return await page.screenshot({ encoding: 'base64' }) as string;
 }
+// @ts-expect-error
 
 async function extractLinks(page: puppeteer.Page) {
   return await page.evaluate(() => {
@@ -418,6 +444,7 @@ async function extractLinks(page: puppeteer.Page) {
     })).slice(0, 5);
   });
 }
+// @ts-expect-error
 
 async function summarizePage(page: puppeteer.Page): Promise<string> {
   const content = await page.evaluate(() => document.body.innerText);
@@ -429,17 +456,19 @@ async function summarizePage(page: puppeteer.Page): Promise<string> {
     ],
     temperature: 0.3,
   });
-  return summary.choices[0].message.content;
+  return summary.choices?.[0]?.message?.content || '';
 }
 
+// @ts-expect-error
 async function scroll(page: puppeteer.Page, direction: string) {
-  await page.evaluate((dir) => {
+  await page.evaluate((dir:string) => {
     window.scrollBy(0, dir === 'down' ? window.innerHeight : -window.innerHeight);
   }, direction);
 }
+// @ts-expect-error
 
 async function highlightElements(page: puppeteer.Page, selector: string) {
-  await page.evaluate((sel) => {
+  await page.evaluate((sel:string) => {
     const elements = document.querySelectorAll(sel);
     elements.forEach((el, index) => {
       const element = el as HTMLElement;
@@ -472,7 +501,7 @@ async function checkTaskCompletion(task: string, currentState: string) {
   });
 
   try {
-    const content = response.choices[0].message.content;
+    const content = response.choices?.[0]?.message?.content || '';
     const cleanedContent = content.replace(/^```json\s*/, '').replace(/\s*```$/, '');
     return parseJson(cleanedContent);
   } catch (error) {
@@ -496,8 +525,10 @@ async function summarizeTest(task: string, testResult: string) {
     max_tokens: 150,
     temperature: 0.7,
   });
-  return summary.choices[0].message.content;
+  return summary.choices?.[0]?.message?.content || '';
 }
+
+// @ts-expect-error
 
 async function extractPageContent(page: puppeteer.Page): Promise<string> {
   return await page.evaluate(() => {
@@ -507,14 +538,15 @@ async function extractPageContent(page: puppeteer.Page): Promise<string> {
            }).join('\n');
   });
 }
+// @ts-expect-error
 
 async function selectOption(page: puppeteer.Page, selector: string, value: string) {
   await page.waitForSelector(selector, { timeout: 5000 });
   await page.select(selector, value);
 }
-
+// @ts-expect-error
 async function forceSelectOption(page: puppeteer.Page, selector: string, value: string) {
-  await page.evaluate((sel, val) => {
+  await page.evaluate((sel:string, val:string) => {
     const select = document.querySelector(sel) as HTMLSelectElement;
     if (select) {
       select.value = val;
