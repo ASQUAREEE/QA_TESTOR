@@ -23,7 +23,7 @@ export default function Header() {
       <div className="container mx-auto flex justify-between items-center">
         <div className="flex items-center">
           <Link href="/">
-            <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">AI Copilot</span>
+            <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">WebExplorer AI</span>
           </Link>
         </div>
         <nav className="hidden md:block">
@@ -38,7 +38,6 @@ export default function Header() {
           {useHasMounted() && <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
             {theme === 'dark' ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
           </Button>}
-          <Link href="/sign-in"><Button>Sign In</Button></Link>
         </div>
       </div>
     </header>

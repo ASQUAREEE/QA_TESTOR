@@ -5,7 +5,7 @@ export default function Footer() {
     <footer className="bg-gray-100 dark:bg-gray-800 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-8">
         <div>
-          <h3 className="text-lg font-semibold mb-4">AI Copilot</h3>
+          <h3 className="text-lg font-semibold mb-4">WebExplorer AI</h3>
           <p className="text-sm">Empowering your social media presence with artificial intelligence.</p>
         </div>
         <div>
@@ -33,7 +33,7 @@ export default function Footer() {
         </div>
       </div>
       <div className="mt-8 text-center text-sm">
-        © {new Date().getFullYear()} AI Copilot. All rights reserved.
+        © {new Date().getFullYear()} WebExplorer AI. All rights reserved.
       </div>
     </footer>
   )

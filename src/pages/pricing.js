@@ -47,7 +47,7 @@ export default function PricingPage() {
   return (
     <>
       <Head>
-        <title>Pricing - AI Copilot</title>
+        <title>Pricing - WebExplorer AI</title>
         <meta name="description" content="Choose the perfect plan for your social media management needs." />
       </Head>
       <div className="flex flex-col min-h-screen">
