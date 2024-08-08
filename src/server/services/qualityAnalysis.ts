@@ -308,11 +308,11 @@ export async function runQualityAnalysis(url: string, task: string): Promise<any
 
     if (!response?.ok()) {
       const statusCode = response?.status();
-      return { 
-        result: `Critical error: HTTP status ${statusCode}`, 
-        screenshots: [], 
-        error: `HTTP status ${statusCode}` 
-      };
+      // return { 
+      //   result: `Critical error: HTTP status ${statusCode}`, 
+      //   screenshots: [], 
+      //   error: `HTTP status ${statusCode}` 
+      // };
     }
 
     let result = '';
