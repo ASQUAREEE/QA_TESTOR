@@ -7,14 +7,8 @@ import { Laptop, Users, TrendingUp, Zap, ArrowUp } from 'lucide-react';
 
 import { api } from "~/utils/api";
 import { Button } from "~/components/ui/button";
-import AIInputForm from "~/components/AIInputForm";
-import AIResponse from "~/components/AIResponse";
 import Header from "~/components/Header";
 import Footer from "~/components/Footer";
-import DataVisualization from "~/components/DataVisualization";
-
-const DynamicTestimonials = dynamic(() => import('~/components/Testimonials'), { ssr: false });
-const DynamicFAQ = dynamic(() => import('~/components/FAQ'), { ssr: false });
 
 export default function Home() {
   const [aiResponse, setAiResponse] = useState("");
@@ -134,24 +128,6 @@ export default function Home() {
           </motion.div>
 
           {/* AI demo section */}
-          <div className="ai-demo-section py-16 px-4 sm:px-6 lg:px-8 bg-gray-100 dark:bg-gray-800">
-            <h2 className="text-3xl font-semibold mb-8 text-center">Experience WebExplorer AI</h2>
-            <div className="max-w-2xl mx-auto">
-              <AIInputForm onSubmit={handleAISubmit} isLoading={isLoading} />
-              {error && <p className="text-red-500 mt-4">{error}</p>}
-              {aiResponse && <AIResponse response={aiResponse} />}
-            </div>
-          </div>
-
-          {/* Data visualization section */}
-          <div className="data-viz-section py-16 px-4 sm:px-6 lg:px-8">
-            <h2 className="text-3xl font-semibold mb-8 text-center">Browsing Insights</h2>
-            <DataVisualization />
-          </div>
-
-          <DynamicTestimonials />
-
-          <DynamicFAQ />
 
           {/* CTA section */}
           <motion.div 
