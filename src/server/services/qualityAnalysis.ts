@@ -97,7 +97,7 @@ Based on the current HTML content and the task at hand, what's the next step? An
   }
 }
 
-async function clickWithRetry(page: puppeteer.Page, selector: string, maxAttempts = 3): Promise<boolean> {
+async function clickWithRetry(page: puppeteer.Page, selector: string, maxAttempts = 2): Promise<boolean> {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       await page.waitForSelector(selector, { timeout: 5000 });
@@ -333,12 +333,8 @@ export async function runQualityAnalysis(url: string, task: string): Promise<any
 
     page.on('pageerror', (error) => {
       const errorMessage = error.message;
-      if (errorMessage.includes('React') || errorMessage.includes('must be used within')) {
-        result += `Critical React Error: ${errorMessage}\n`;
-        criticalErrorOccurred = true;
-      } else {
-        result += `Page Error: ${errorMessage}\n`;
-      }
+      result += `Critical Error: ${errorMessage}\n`;
+      criticalErrorOccurred = true;
       errors.push(`Page error: ${errorMessage}`);
       pageErrorOccurred = true;
     });
