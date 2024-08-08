@@ -107,7 +107,7 @@ Based on the current HTML content and the task at hand, what's the next step? An
 async function runQualityAnalysis(url: string, task: string): Promise<any> {
   const browser = await puppeteer.launch({
     headless: false,
-    args: ['--start-maximized'],
+    args: ['--start-maximized','--enable-blink-features=HTMLImports'],
     defaultViewport: null
   });
   const page = await browser.newPage();

@@ -261,6 +261,13 @@ async function extractPageContent(page: puppeteer.Page): Promise<string> {
   });
 }
 
+const TIMEOUT = 60000; // 60 seconds timeout
+const LOAD_FAIL = Symbol('LOAD_FAIL');
+
+const sleep = (options: { ms: number, result?: any }) => new Promise(resolve => {
+  setTimeout(resolve, options.ms, options.result === undefined ? true : options.result);
+});
+
 export async function runQualityAnalysis(url: string, task: string): Promise<any> {
   let browser;
   try {
@@ -269,7 +276,7 @@ export async function runQualityAnalysis(url: string, task: string): Promise<any
       : '/usr/bin/google-chrome-stable'; // Adjust this path for your local Chrome installation
 
     const options = {
-      args: chromium.args,
+      args: [...chromium.args, '--enable-blink-features=HTMLImports'],
       executablePath: executablePath,
       headless: chromium.headless,
     };
@@ -277,11 +284,36 @@ export async function runQualityAnalysis(url: string, task: string): Promise<any
     if (process.env.NODE_ENV === 'development') {
       // For local development, use these options
       options.headless = true;
-      options.args = ['--no-sandbox', '--disable-setuid-sandbox'];
+      options.args = ['--no-sandbox', '--disable-setuid-sandbox', '--enable-blink-features=HTMLImports'];
     }
 
     browser = await puppeteer.launch(options);
     const page = await browser.newPage();
+
+    const sleepOptions = { ms: TIMEOUT - 1000, result: LOAD_FAIL };
+    const response = await Promise.race([
+      sleep(sleepOptions),
+      page.goto(url, { timeout: TIMEOUT + 1000 }),
+    ]);
+
+    const success = response !== LOAD_FAIL;
+
+    if (!success) {
+      return { 
+        result: "Navigation failed due to timeout", 
+        screenshots: [], 
+        error: "Page load timed out" 
+      };
+    }
+
+    if (!response?.ok()) {
+      const statusCode = response?.status();
+      return { 
+        result: `Critical error: HTTP status ${statusCode}`, 
+        screenshots: [], 
+        error: `HTTP status ${statusCode}` 
+      };
+    }
 
     let result = '';
     let currentState = `URL: ${url}`;
@@ -320,29 +352,6 @@ export async function runQualityAnalysis(url: string, task: string): Promise<any
         }
       }
     });
-
-    try {
-      const response = await page.goto(url, { 
-        waitUntil: 'networkidle0', 
-        timeout: 60000 // Increase timeout to 60 seconds
-      });
-      
-      if (!response?.ok()) {
-        const statusCode = response?.status();
-        return { 
-          result: `Critical error: HTTP status ${statusCode}`, 
-          screenshots: [], 
-          error: `HTTP status ${statusCode}` 
-        };
-      }
-    } catch (navigationError: any) {
-      console.error("Navigation error:", navigationError);
-      return { 
-        result: "Navigation failed", 
-        screenshots: [], 
-        error: navigationError.message 
-      };
-    }
 
     if (pageErrorOccurred) {
       return { result, screenshots, error: "Page error occurred" };

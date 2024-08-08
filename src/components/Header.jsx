@@ -29,7 +29,6 @@ export default function Header() {
         <nav className="hidden md:block">
           <ul className="flex space-x-6">
             <li><Link href="/" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Home</Link></li>
-            <li><Link href="/ai-assistant" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">AI Assistant</Link></li>
             <li><Link href="/quality-analysis" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Quality Analysis</Link></li>
             <li><Link href="/pricing" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Pricing</Link></li>
             <li><a href="#features" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Features</a></li>

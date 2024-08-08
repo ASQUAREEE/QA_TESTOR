@@ -75,8 +75,8 @@ export default function Home() {
   return (
     <>
       <Head>
-        <title>AI Copilot - Your Intelligent Social Media Assistant</title>
-        <meta name="description" content="AI-powered social media management tool to supercharge your online presence. Automate posting, analyze engagement, and create content with ease." />
+        <title>WebExplorer AI - Your Intelligent Web Browsing Assistant</title>
+        <meta name="description" content="AI-powered web browsing assistant to enhance your online experience. Discover content, analyze websites, and navigate the web with ease." />
         <link rel="icon" href="/favicon.ico" />
       </Head>
       <div className="flex flex-col min-h-screen">
@@ -88,16 +88,16 @@ export default function Home() {
             transition={{ duration: 0.5 }}
             className="hero-section text-center py-20 px-4 sm:px-6 lg:px-8 text-white relative overflow-hidden"
           >
-            <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-600 z-0"></div>
-            <div className="absolute inset-0 bg-grid-pattern opacity-10 z-10"></div>
+            <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 to-blue-600 z-0"></div>
+            <div className="absolute inset-0 bg-[url('/circuit-board.svg')] opacity-10 z-10"></div>
             <div className="relative z-20">
               <h1 className="text-4xl sm:text-6xl font-bold mb-4">
-                Social Media AI Copilot
+                WebExplorer AI
               </h1>
               <p className="text-xl sm:text-2xl mb-8">
-                Let AI manage your social media accounts
+                Your intelligent companion for web browsing
               </p>
-              <Button size="lg" variant="secondary">Get Started Now</Button>
+              <Button size="lg" variant="secondary">Start Exploring</Button>
             </div>
           </motion.div>
 
@@ -110,32 +110,32 @@ export default function Home() {
           >
             <h2 className="text-3xl font-semibold mb-8 text-center">Features</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 max-w-6xl mx-auto">
-              <motion.div whileHover={{ scale: 1.05 }} className="feature-card">
-                <Laptop className="w-12 h-12 mb-4 text-blue-500" />
-                <h3 className="text-xl font-semibold mb-2">Automated Scheduling</h3>
-                <p>Optimize your posting times for maximum engagement</p>
+              <motion.div whileHover={{ scale: 1.05 }} className="feature-card p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
+                <Laptop className="w-12 h-12 mb-4 text-cyan-500" />
+                <h3 className="text-xl font-semibold mb-2">Smart Search</h3>
+                <p>Find exactly what you're looking for with AI-powered search</p>
               </motion.div>
-              <motion.div whileHover={{ scale: 1.05 }} className="feature-card">
-                <Users className="w-12 h-12 mb-4 text-green-500" />
-                <h3 className="text-xl font-semibold mb-2">Audience Insights</h3>
-                <p>Understand your followers better with AI-driven analytics</p>
+              <motion.div whileHover={{ scale: 1.05 }} className="feature-card p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
+                <Users className="w-12 h-12 mb-4 text-blue-500" />
+                <h3 className="text-xl font-semibold mb-2">Content Curation</h3>
+                <p>Discover personalized content tailored to your interests</p>
               </motion.div>
-              <motion.div whileHover={{ scale: 1.05 }} className="feature-card">
-                <TrendingUp className="w-12 h-12 mb-4 text-purple-500" />
-                <h3 className="text-xl font-semibold mb-2">Trend Monitoring</h3>
-                <p>Stay ahead of the curve with real-time trend analysis</p>
+              <motion.div whileHover={{ scale: 1.05 }} className="feature-card p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
+                <TrendingUp className="w-12 h-12 mb-4 text-indigo-500" />
+                <h3 className="text-xl font-semibold mb-2">Web Analysis</h3>
+                <p>Get instant insights and summaries of web pages</p>
               </motion.div>
-              <motion.div whileHover={{ scale: 1.05 }} className="feature-card">
+              <motion.div whileHover={{ scale: 1.05 }} className="feature-card p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
                 <Zap className="w-12 h-12 mb-4 text-yellow-500" />
-                <h3 className="text-xl font-semibold mb-2">Content Creation</h3>
-                <p>Generate engaging posts with AI assistance</p>
+                <h3 className="text-xl font-semibold mb-2">Task Automation</h3>
+                <p>Automate repetitive browsing tasks with ease</p>
               </motion.div>
             </div>
           </motion.div>
 
           {/* AI demo section */}
           <div className="ai-demo-section py-16 px-4 sm:px-6 lg:px-8 bg-gray-100 dark:bg-gray-800">
-            <h2 className="text-3xl font-semibold mb-8 text-center">Try It Out</h2>
+            <h2 className="text-3xl font-semibold mb-8 text-center">Experience WebExplorer AI</h2>
             <div className="max-w-2xl mx-auto">
               <AIInputForm onSubmit={handleAISubmit} isLoading={isLoading} />
               {error && <p className="text-red-500 mt-4">{error}</p>}
@@ -145,7 +145,7 @@ export default function Home() {
 
           {/* Data visualization section */}
           <div className="data-viz-section py-16 px-4 sm:px-6 lg:px-8">
-            <h2 className="text-3xl font-semibold mb-8 text-center">Engagement Analytics</h2>
+            <h2 className="text-3xl font-semibold mb-8 text-center">Browsing Insights</h2>
             <DataVisualization />
           </div>
 
@@ -158,11 +158,11 @@ export default function Home() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.4, duration: 0.5 }}
-            className="cta-section text-center py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-r from-purple-600 to-blue-500 text-white"
+            className="cta-section text-center py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-r from-blue-600 to-cyan-500 text-white"
           >
-            <h2 className="text-3xl font-semibold mb-4">Ready to supercharge your social media?</h2>
-            <p className="text-xl mb-8">Join thousands of satisfied users and take your social presence to the next level.</p>
-            <Button size="lg" variant="secondary">Get Started Now</Button>
+            <h2 className="text-3xl font-semibold mb-4">Ready to revolutionize your web browsing?</h2>
+            <p className="text-xl mb-8">Join thousands of users and experience the web like never before.</p>
+            <Button size="lg" variant="secondary">Get WebExplorer AI Now</Button>
           </motion.div>
         </main>
         <Footer />
