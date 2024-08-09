@@ -8,7 +8,6 @@ import { Laptop, Users, TrendingUp, Zap, ArrowUp } from 'lucide-react';
 import { api } from "~/utils/api";
 import { Button } from "~/components/ui/button";
 import Header from "~/components/Header";
-import Footer from "~/components/Footer";
 
 export default function Home() {
   const [aiResponse, setAiResponse] = useState("");
@@ -141,7 +140,6 @@ export default function Home() {
             <Button size="lg" variant="secondary">Get WebExplorer AI Now</Button>
           </motion.div>
         </main>
-        <Footer />
         <AnimatePresence>
           {showScrollTop && (
             <motion.button

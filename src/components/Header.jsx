@@ -30,8 +30,6 @@ export default function Header() {
           <ul className="flex space-x-6">
             <li><Link href="/" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Home</Link></li>
             <li><Link href="/quality-analysis" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Quality Analysis</Link></li>
-            <li><Link href="/pricing" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Pricing</Link></li>
-            <li><a href="#features" className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors">Features</a></li>
           </ul>
         </nav>
         <div className="flex items-center space-x-4">
