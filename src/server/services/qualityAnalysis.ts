@@ -269,6 +269,47 @@ const sleep = (options: { ms: number, result?: any }) => new Promise(resolve => 
   setTimeout(resolve, options.ms, options.result === undefined ? true : options.result);
 });
 
+const MAX_RETRIES = 4;
+const RETRY_DELAY = 5000; // 5 seconds
+
+async function navigateWithRetry(page: puppeteer.Page, url: string, timeout: number): Promise<boolean> {
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const response = await Promise.race([
+        sleep({ ms: timeout - 1000, result: LOAD_FAIL }),
+        page.goto(url, { timeout: timeout + 1000 }),
+      ]);
+
+      if (response === LOAD_FAIL) {
+        console.log(`Navigation attempt ${attempt + 1} timed out`);
+        if (attempt < MAX_RETRIES - 1) {
+          console.log(`Retrying in ${RETRY_DELAY / 1000} seconds...`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+        }
+        continue;
+      }
+
+      if (!response?.ok()) {
+        console.log(`Navigation attempt ${attempt + 1} failed with status ${response?.status()}`);
+        if (attempt < MAX_RETRIES - 1) {
+          console.log(`Retrying in ${RETRY_DELAY / 1000} seconds...`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+        }
+        continue;
+      }
+
+      return true;
+    } catch (error) {
+      console.error(`Navigation attempt ${attempt + 1} error:`, error);
+      if (attempt < MAX_RETRIES - 1) {
+        console.log(`Retrying in ${RETRY_DELAY / 1000} seconds...`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+      }
+    }
+  }
+  return false;
+}
+
 export async function runQualityAnalysis(url: string, task: string): Promise<any> {
   let browser;
   try {
@@ -291,29 +332,14 @@ export async function runQualityAnalysis(url: string, task: string): Promise<any
     browser = await puppeteer.launch(options);
     const page = await browser.newPage();
 
-    const sleepOptions = { ms: TIMEOUT - 1000, result: LOAD_FAIL };
-    const response = await Promise.race([
-      sleep(sleepOptions),
-      page.goto(url, { timeout: TIMEOUT + 1000 }),
-    ]);
+    const navigationSuccess = await navigateWithRetry(page, url, TIMEOUT);
 
-    const success = response !== LOAD_FAIL;
-
-    if (!success) {
+    if (!navigationSuccess) {
       return { 
-        result: "Navigation failed due to timeout", 
+        result: "Navigation failed after multiple attempts", 
         screenshots: [], 
-        error: "Page load timed out" 
+        error: "Page load failed" 
       };
-    }
-
-    if (!response?.ok()) {
-      const statusCode = response?.status();
-      // return { 
-      //   result: `Critical error: HTTP status ${statusCode}`, 
-      //   screenshots: [], 
-      //   error: `HTTP status ${statusCode}` 
-      // };
     }
 
     let result = '';
